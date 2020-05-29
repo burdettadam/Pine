@@ -5,11 +5,9 @@ This software can be tweaked to work smoothly in CS:GO, Fortnite, and Overwatch.
 
 
 ## Demo
-*Terrible FPS because my potato mac can't run CS:GO, Pine, and screen record at the same time. :'-)*
+[Demo video](https://www.youtube.com/watch?v=HB4HA29aOcc)
 
-![Pine Demo GIF](/demo/demo.gif)
-
-I will upload a more extensive demo video pretty soon.
+[![Pine Demo GIF](/demo/demo.gif)=](https://www.youtube.com/watch?v=HB4HA29aOcc)
 
 
 ## Installation
@@ -63,5 +61,5 @@ OpenCV is at the heart of Pine's image processing capabilities. Not only does it
 
 ## Special Thanks
 Thanks to everyone who made this project possible. I'd like to give special shoutouts to the following people:
- - [AutisticDragon](https://github.com/AutisticDragon) for his contributions to the codebase. He leveraged native Windows APIs to improve the performance of Pine by up to 300%.
+ - [AutisticDragon](https://github.com/FidgetySo) for his contributions to the codebase. He leveraged native Windows APIs to improve the performance of Pine by up to 300%.
  - Adrian Rosebrock, PhD, for his invaluable resources on machine learning. Check out his blog: [PyImageSearch](https://www.pyimagesearch.com)
