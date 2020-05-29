@@ -4,73 +4,29 @@ import timeit
 import _thread
 import imutils
 import time
-import mss
 import cv2
 import os
 import signal
 import sys
-import pynput
-import ctypes
-from lib.grab import grab_screen
+import mss
+from pynput.mouse import Button, Controller, Listener
 
-sct = mss.mss()
-Wd, Hd = sct.monitors[1]["width"], sct.monitors[1]["height"]
-SendInput = ctypes.windll.user32.SendInput
-PUL = ctypes.POINTER(ctypes.c_ulong)
+mouse = Controller()
+enable = False
 
-class KeyBdInput(ctypes.Structure):
-    _fields_ = [("wVk", ctypes.c_ushort),
-                ("wScan", ctypes.c_ushort),
-                ("dwFlags", ctypes.c_ulong),
-                ("time", ctypes.c_ulong),
-                ("dwExtraInfo", PUL)]
-class HardwareInput(ctypes.Structure):
-    _fields_ = [("uMsg", ctypes.c_ulong),
-                ("wParamL", ctypes.c_short),
-                ("wParamH", ctypes.c_ushort)]
-class MouseInput(ctypes.Structure):
-    _fields_ = [("dx", ctypes.c_long),
-                ("dy", ctypes.c_long),
-                ("mouseData", ctypes.c_ulong),
-                ("dwFlags", ctypes.c_ulong),
-                ("time", ctypes.c_ulong),
-                ("dwExtraInfo", PUL)]
-class Input_I(ctypes.Union):
-    _fields_ = [("ki", KeyBdInput),
-                ("mi", MouseInput),
-                ("hi", HardwareInput)]
-class Input(ctypes.Structure):
-    _fields_ = [("type", ctypes.c_ulong),
-                ("ii", Input_I)]
-
-def set_pos(x, y):
-    x = 1 + int(x * 65536./Wd)
-    y = 1 + int(y * 65536./Hd)
-    extra = ctypes.c_ulong(0)
-    ii_ = pynput._util.win32.INPUT_union()
-    ii_.mi = pynput._util.win32.MOUSEINPUT(x, y, 0, (0x0001 | 0x8000), 0, ctypes.cast(ctypes.pointer(extra), ctypes.c_void_p))
-    command=pynput._util.win32.INPUT(ctypes.c_ulong(0), ii_)
-    SendInput(1, ctypes.pointer(command), ctypes.sizeof(command))
 if __name__ == "__main__":
     print("Do not run this file directly.")
 
-def start(ENABLE_AIMBOT):
+def start(config):
 
     # Config
-    YOLO_DIRECTORY = "models"
-    CONFIDENCE = 0.36
-    THRESHOLD = 0.22
-
-    #
-    #   Size (in pixels) of the screen capture box to feed the neural net.
-    #   This box is in the center of your screen. Lower value makes the network faster.
-    #
-    #   Example: "ACTIVATION_RANGE = 400" means a 400x400 pixel box.
-    #
-    ACTIVATION_RANGE = 250
-
+    YOLO_DIRECTORY = config.get('Yolo','Directory')
+    CONFIDENCE = config.getfloat('Yolo','Confidence')
+    THRESHOLD = config.getfloat('Yolo','Threshold')
+    ACTIVATION_RANGE = config.getint('Sampling','ActivationRange')
+    AIM_LOCK = False
     # load the COCO class labels our YOLO model was trained on
-    labelsPath = os.path.sep.join([YOLO_DIRECTORY, "coco-dataset.labels"])
+    labelsPath = os.path.sep.join([YOLO_DIRECTORY, config.get('Yolo','Labels')])
     LABELS = open(labelsPath).read().strip().split("\n")
 
     # initialize a list of colors to represent each possible class label
@@ -79,8 +35,8 @@ def start(ENABLE_AIMBOT):
                                dtype="uint8")
 
     # derive the paths to the YOLO weights and model configuration
-    weightsPath = os.path.sep.join([YOLO_DIRECTORY, "yolov3-tiny.weights"])
-    configPath = os.path.sep.join([YOLO_DIRECTORY, "yolov3-tiny.cfg"])
+    weightsPath = os.path.sep.join([YOLO_DIRECTORY, config['Yolo']['Weights']])
+    configPath = os.path.sep.join([YOLO_DIRECTORY, config['Yolo']['Config']])
 
     # Wait for buffering
     time.sleep(0.4)
@@ -94,28 +50,30 @@ def start(ENABLE_AIMBOT):
     ln = net.getLayerNames()
     ln = [ln[i[0] - 1] for i in net.getUnconnectedOutLayers()]
 
-    # Define screen capture area
-    print("[INFO] loading screencapture device...")
-    W, H = None, None
-    origbox = (int(Wd/2 - ACTIVATION_RANGE/2),
-               int(Hd/2 - ACTIVATION_RANGE/2),
-               int(Wd/2 + ACTIVATION_RANGE/2),
-               int(Hd/2 + ACTIVATION_RANGE/2))
+    def on_move(x, y):
+        pass
+
+    def on_click(x, y, button, pressed):
+        global AIM_LOCK
+        AIM_LOCK = False
+        if button == Button.right:
+            AIM_LOCK = not AIM_LOCK
+            print('{0}'.format( AIM_LOCK))
+
+    def on_scroll(x, y, dx, dy):
+        pass
+
+    listener = Listener(
+        on_move=on_move,
+        on_click=on_click,
+        on_scroll=on_scroll)
+    listener.start()
 
     # Log whether aimbot is enabled
-    if not ENABLE_AIMBOT:
+    if not AIM_LOCK:
         print("[INFO] aimbot disabled, using visualizer only...")
     else:
         print(colored("[OKAY] Aimbot enabled!", "green"))
-
-    # Handle Ctrl+C in terminal, release pointers
-    def signal_handler(sig, frame):
-        # release the file pointers
-        print("\n[INFO] cleaning up...")
-        sct.close()
-        cv2.destroyAllWindows()
-        sys.exit(0)
-    signal.signal(signal.SIGINT, signal_handler)
 
     # Test for GPU support
     build_info = str("".join(cv2.getBuildInformation().split()))
@@ -133,108 +91,138 @@ def start(ENABLE_AIMBOT):
             colored("[WARNING] CUDA acceleration is disabled!", "yellow"))
 
     print()
-
+    
+    W, H = None, None
     # loop over frames from the video file stream
-    while True:
-        start_time = timeit.default_timer()
-        frame = np.array(grab_screen(region=origbox))
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
+    with mss.mss() as sct:
+        # Handle Ctrl+C in terminal, release pointers
+        def signal_handler(sig, frame):
+            # release the file pointers
+            print("\n[INFO] cleaning up...")
+            listener.stop
+            sct.close()
+            cv2.destroyAllWindows()
+            sys.exit(0)
+        
+        signal.signal(signal.SIGINT, signal_handler)
 
-        # if the frame dimensions are empty, grab them
-        if W is None or H is None:
-            (H, W) = frame.shape[: 2]
+        # Part of the screen to capture
+        Wd, Hd = sct.monitors[1]["width"], sct.monitors[1]["height"]
+        HALF_RANGE = ACTIVATION_RANGE/2
+        monitor = { "top": (Hd/2) - HALF_RANGE, 
+                    "left": (Wd/2) - HALF_RANGE, 
+                    "width": ACTIVATION_RANGE, 
+                    "height": ACTIVATION_RANGE}
+        print("[INFO] loading screencapture device...")
+        while "Screen capturing":
+            if not AIM_LOCK:
+                continue
+            else:
+                start_time = timeit.default_timer()
+                # Get raw pixels from the screen, save it to a Numpy array
+                frame = np.array(sct.grab(monitor))
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
 
-        frame = cv2.UMat(frame)
+                # if the frame dimensions are empty, grab them
+                if W is None or H is None:
+                    (H, W) = frame.shape[: 2]
 
-        # construct a blob from the input frame and then perform a forward
-        # pass of the YOLO object detector, giving us our bounding boxes
-        # and associated probabilities
-        blob = cv2.dnn.blobFromImage(frame, 1 / 260, (150, 150),
-                                     swapRB=False, crop=False)
-        net.setInput(blob)
-        layerOutputs = net.forward(ln)
+                frame = cv2.UMat(frame)
 
-        # initialize our lists of detected bounding boxes, confidences,
-        # and class IDs, respectively
-        boxes = []
-        confidences = []
-        classIDs = []
+                # construct a blob from the input frame and then perform a forward
+                # pass of the YOLO object detector, giving us our bounding boxes
+                # and associated probabilities
+                blob = cv2.dnn.blobFromImage(frame, 1 / 260, (150, 150),
+                                            swapRB=False, crop=False)
+                net.setInput(blob)
+                layerOutputs = net.forward(ln)
 
-        # loop over each of the layer outputs
-        for output in layerOutputs:
-            # loop over each of the detections
-            for detection in output:
-                # extract the class ID and confidence (i.e., probability)
-                # of the current object detection
-                scores = detection[5:]
+                # initialize our lists of detected bounding boxes, confidences,
+                # and class IDs, respectively
+                boxes = []
+                confidences = []
+                classIDs = []
 
-                # classID = np.argmax(scores)
-                # confidence = scores[classID]
-                classID = 0  # person = 0
-                confidence = scores[classID]
+                # loop over each of the layer outputs
+                for output in layerOutputs:
+                    # loop over each of the detections
+                    for detection in output:
+                        # extract the class ID and confidence (i.e., probability)
+                        # of the current object detection
+                        scores = detection[5:]
 
-                # filter out weak predictions by ensuring the detected
-                # probability is greater than the minimum probability
-                if confidence > CONFIDENCE:
-                    # scale the bounding box coordinates back relative to
-                    # the size of the image, keeping in mind that YOLO
-                    # actually returns the center (x, y)-coordinates of
-                    # the bounding box followed by the boxes' width and
-                    # height
-                    box = detection[0: 4] * np.array([W, H, W, H])
-                    (centerX, centerY, width, height) = box.astype("int")
+                        # classID = np.argmax(scores)
+                        # confidence = scores[classID]
+                        classID = 0  # person = 0
+                        confidence = scores[classID]
 
-                    # use the center (x, y)-coordinates to derive the top
-                    # and and left corner of the bounding box
-                    x = int(centerX - (width / 2))
-                    y = int(centerY - (height / 2))
+                        # filter out weak predictions by ensuring the detected
+                        # probability is greater than the minimum probability
+                        if confidence > CONFIDENCE:
+                            # scale the bounding box coordinates back relative to
+                            # the size of the image, keeping in mind that YOLO
+                            # actually returns the center (x, y)-coordinates of
+                            # the bounding box followed by the boxes' width and
+                            # height
+                            box = detection[0: 4] * np.array([W, H, W, H])
+                            (centerX, centerY, width, height) = box.astype("int")
 
-                    # update our list of bounding box coordinates,
-                    # confidences, and class IDs
-                    boxes.append([x, y, int(width), int(height)])
-                    confidences.append(float(confidence))
-                    classIDs.append(classID)
+                            # use the center (x, y)-coordinates to derive the top
+                            # and and left corner of the bounding box
+                            x = int(centerX - (width / 2))
+                            y = int(centerY - (height / 2))
 
-        # apply non-maxima suppression to suppress weak, overlapping
-        # bounding boxes
-        idxs = cv2.dnn.NMSBoxes(boxes, confidences, CONFIDENCE, THRESHOLD)
+                            # update our list of bounding box coordinates,
+                            # confidences, and class IDs
+                            boxes.append([x, y, int(width), int(height)])
+                            confidences.append(float(confidence))
+                            classIDs.append(classID)
 
-        # ensure at least one detection exists
-        if len(idxs) > 0:
+                # apply non-maxima suppression to suppress weak, overlapping
+                # bounding boxes
+                idxs = cv2.dnn.NMSBoxes(boxes, confidences, CONFIDENCE, THRESHOLD)
 
-            # Find best player match
-            bestMatch = confidences[np.argmax(confidences)]
+                # ensure at least one detection exists
+                if len(idxs) > 0:
 
-            # loop over the indexes we are keeping
-            for i in idxs.flatten():
-                # extract the bounding box coordinates
-                (x, y) = (boxes[i][0], boxes[i][1])
-                (w, h) = (boxes[i][2], boxes[i][3])
+                    # Find best player match
+                    bestMatch = confidences[np.argmax(confidences)]
 
-                # draw target dot on the frame
-                cv2.circle(frame, (int(x + w / 2), int(y + h / 5)), 5, (0, 0, 255), -1)
+                    # loop over the indexes we are keeping
+                    for i in idxs.flatten():
+                        # extract the bounding box coordinates
+                        (x, y) = (boxes[i][0], boxes[i][1])
+                        (w, h) = (boxes[i][2], boxes[i][3])
 
-                # draw a bounding box rectangle and label on the frame
-                # color = [int(c) for c in COLORS[classIDs[i]]]
-                cv2.rectangle(frame, (x, y),
-                                (x + w, y + h), (0, 0, 255), 2)
+                        # draw target dot on the frame
+                        target_dot = {'x': x + w / 2,'y': y + h / 5}
+                        cv2.circle(frame, (int(target_dot['x']), int(target_dot['y'])), 5, (0, 0, 255), -1)
 
-                text = "TARGET {}%".format(int(confidences[i] * 100))
-                cv2.putText(frame, text, (x, y - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                        # draw a bounding box rectangle and label on the frame
+                        # color = [int(c) for c in COLORS[classIDs[i]]]
+                        #cv2.rectangle(frame, (x, y),
+                        #                (x + w, y + h), (0, 0, 255), 2)
 
-                if ENABLE_AIMBOT and bestMatch == confidences[i]:
-                    mouseX = origbox[0] + (x + w/1.5)
-                    mouseY = origbox[1] + (y + h/5)
-                    set_pos(mouseX, mouseY)
+                        text = "TARGET {}%".format(int(confidences[i] * 100))
+                        cv2.putText(frame, text, (x, y - 5),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        cv2.imshow("Neural Net Vision (Pine)", frame)
-        elapsed = timeit.default_timer() - start_time
-        sys.stdout.write(
-            "\r{1} FPS with {0} MS interpolation delay \t".format(int(elapsed*1000), int(1/elapsed)))
-        sys.stdout.flush()
-        if cv2.waitKey(1) & 0xFF == ord('0'):
-            break
+                        if enable and bestMatch == confidences[i]:
+                            # translate aimbot window coordinates to monitor coordinates
+                            mouseX = monitor["left"] + (target_dot['x'])
+                            mouseY = monitor["top"]  + (target_dot['y'])
+                            # Set pointer position
+                            mouse.position = (mouseX, mouseY)
+                            # Snipe target
+                            mouse.click(Button.left, 2)
+
+                cv2.imshow("Neural Net Vision (Pine)", frame)
+                elapsed = timeit.default_timer() - start_time
+                sys.stdout.write(
+                    "\r{1} FPS with {0} MS interpolation delay \t".format(int(elapsed*1000), int(1/elapsed)))
+                sys.stdout.flush()
+                if cv2.waitKey(1) & 0xFF == ord('0'):
+                    break
 
     # Clean up on exit
     signal_handler(0, 0)

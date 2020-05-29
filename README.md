@@ -13,16 +13,18 @@ I will upload a more extensive demo video pretty soon.
 
 
 ## Installation
-- Install OpenCV with Python3 bindings
-- Install any missing dependencies with Pip
-- Install [pywin32](https://sourceforge.net/projects/pywin32), the Windows API bindings for Python.
-- Install the Nvidia CUDA toolkit if you have a compatible GPU
-  - If you don't have an Nvidia GPU, Pine will try to use OpenCL instead of CUDA
-- Also for acurate long Quick Mouse Movements please Disable Mouse acceleration. Thanks!
-- Then run the program with Python3.
- 
- `$ python3 pine.py`
- 
+- Install system dependencies
+  - OpenCV with Python3 bindings
+  - Nvidia CUDA toolkit if you have a compatible GPU
+    - Pine will try to use CUDA, before falling back to OpenCL
+  - Disable Mouse acceleration
+- create a virtual environment `python3 -m venv env`
+- activate it
+  - windows, `env\Scripts\activate.bat`
+  - Unix or MacOS, `source env/bin/activate`
+- install needed library's, `pip install -r requirements.txt`
+- run pine,`python pine.py`
+- update the `config.ini` to customize Pine's behavior
  
  ### What games does it work with?
 This release is currently optimized for CS:GO, but I plan adding more game configs in the future
@@ -35,7 +37,7 @@ Well, neural network aimbots are great for a lot of reasons... Probably most imp
 Neural Network Aimbots have always had one big problem: their target detection is okay, but their inference time is *terrible*. Even HAAR Cascades are a bad fit, since they have decent speed but horrible accuracy. MobileNetSSD and Faster R-CNN were *sorta ok* if you had a Nvidia Titan X with CUDA drivers. But let's be honest, who the hell can afford a Titan?
 
 Enter YOLOv3, tiny edition. Detection scores are decent, and inference times are... *WHAT? **220 FPS WITH A 33% mAP?!*** For reference of how absolutely insane this is, SSD513 gets about 8 FPS with 50% mAP.
-
+- Coming Soon, YOLOv4 support
 
 ![YOLO Network Speed Graph](https://i.imgur.com/NrGZOYt.png)
 
