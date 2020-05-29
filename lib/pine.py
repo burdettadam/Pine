@@ -12,7 +12,6 @@ import mss
 from pynput.mouse import Button, Controller, Listener
 
 mouse = Controller()
-enable = False
 
 if __name__ == "__main__":
     print("Do not run this file directly.")
@@ -54,8 +53,7 @@ def start(config):
         pass
 
     def on_click(x, y, button, pressed):
-        global AIM_LOCK
-        AIM_LOCK = False
+        nonlocal AIM_LOCK
         if button == Button.right:
             AIM_LOCK = not AIM_LOCK
             print('{0}'.format( AIM_LOCK))
@@ -68,12 +66,6 @@ def start(config):
         on_click=on_click,
         on_scroll=on_scroll)
     listener.start()
-
-    # Log whether aimbot is enabled
-    if not AIM_LOCK:
-        print("[INFO] aimbot disabled, using visualizer only...")
-    else:
-        print(colored("[OKAY] Aimbot enabled!", "green"))
 
     # Test for GPU support
     build_info = str("".join(cv2.getBuildInformation().split()))
@@ -207,7 +199,7 @@ def start(config):
                         cv2.putText(frame, text, (x, y - 5),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-                        if enable and bestMatch == confidences[i]:
+                        if bestMatch == confidences[i]:
                             # translate aimbot window coordinates to monitor coordinates
                             mouseX = monitor["left"] + (target_dot['x'])
                             mouseY = monitor["top"]  + (target_dot['y'])
